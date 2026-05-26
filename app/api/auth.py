@@ -19,6 +19,7 @@ limiter = Limiter(key_func=get_remote_address)
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
+@limiter.limit("5/minute")
 async def register(
     request: Request,
     body: RegisterRequest,
@@ -44,6 +45,7 @@ async def register(
     response_model=AuthResponse,
     summary="Login with email + password",
 )
+@limiter.limit("5/minute")
 async def login(
     request: Request,
     body: LoginRequest,
