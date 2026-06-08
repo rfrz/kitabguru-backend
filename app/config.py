@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = None
     groq_whisper_model: str = "whisper-large-v3"
 
+    # Provider Toggles ("groq" / "local" for STT, "edge_tts" / "local" for TTS)
+    stt_provider: str = "groq"
+    tts_provider: str = "edge_tts"
+
     # Edge-TTS
     tts_voice: str = "id-ID-ArdiNeural"
     tts_rate: str = "+0%"

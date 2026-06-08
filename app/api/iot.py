@@ -132,3 +132,105 @@ async def get_iot_session(
         ended_at=session.ended_at,
         messages=messages,
     )
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+import httpx
+from groq import AsyncGroq
+from app.services.audio_manager import AudioManager
+from app.models.iot import IoTMessage, IoTMessageRole
+
+@router.websocket("/sessions/{session_id}/stream")
+async def iot_stream(
+    websocket: WebSocket,
+    session_id: str,
+    db: DB,
+    settings: AppSettings,
+):
+    """
+    WebSocket endpoint for real-time audio streaming (Raw PCM).
+    Implements Fast vs Slow route fallback.
+    """
+    await websocket.accept()
+    
+    # Load FAQ for Fast Route
+    try:
+        import os
+        with open("faq.txt", "r", encoding="utf-8") as f:
+            faq_text = f.read()
+    except Exception:
+        faq_text = ""
+
+    try:
+        sid = uuid.UUID(session_id)
+        while True:
+            # Receive raw PCM chunk
+            audio_bytes = await websocket.receive_bytes()
+            
+            # STT
+            transcription = await AudioManager.transcribe(audio_bytes)
+            if not transcription.strip():
+                continue
+
+            # Fast Route
+            client = AsyncGroq(api_key=settings.groq_api_key)
+            prompt = (
+                f"Konteks FAQ: {faq_text}\n\nPertanyaan: {transcription}\n"
+                "Jawab berdasarkan FAQ. Jika konteks tidak cukup, jawab persis: 'Saya tidak tahu'."
+            )
+            
+            completion = await client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0
+            )
+            answer = completion.choices[0].message.content.strip()
+            
+            # Fallback to Slow Route if rejected
+            route_taken = "fast_faq"
+            if "tidak tahu" in answer.lower():
+                route_taken = "slow_rag"
+                try:
+                    async with httpx.AsyncClient() as http_client:
+                        res = await http_client.post(
+                            f"{settings.inference_base_url}/api/v1/chat",
+                            json={"query": transcription}
+                        )
+                        if res.status_code == 200:
+                            data = res.json()
+                            answer = data.get("answer", "Maaf, sistem AI sedang sibuk.")
+                        else:
+                            answer = "Maaf, terjadi kesalahan pada AI engine."
+                except Exception:
+                    answer = "Maaf, mesin inferensi sedang tidak dapat dihubungi."
+
+            # TTS
+            audio_response = await AudioManager.synthesize(answer)
+            
+            # Save to DB
+            user_msg = IoTMessage(
+                iot_session_id=sid,
+                role=IoTMessageRole.user,
+                content=transcription,
+                meta={"route": route_taken}
+            )
+            assistant_msg = IoTMessage(
+                iot_session_id=sid,
+                role=IoTMessageRole.assistant,
+                content=answer,
+                meta={"route": route_taken}
+            )
+            db.add_all([user_msg, assistant_msg])
+            await db.commit()
+            
+            # Send audio back
+            await websocket.send_bytes(audio_response)
+            
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WebSocket Error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass

@@ -26,8 +26,10 @@ dependencies = [
     "edge-tts>=6.1.9",
     "Pillow>=10.0.0",
 
-    # STT
+    # STT & TTS
     "groq>=0.9.0",
+    "faster-whisper>=1.0.0",
+    "piper-tts>=1.2.0",
 
     # Utilities
     "python-dateutil>=2.9.0",
