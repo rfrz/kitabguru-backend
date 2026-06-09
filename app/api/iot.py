@@ -146,11 +146,16 @@ async def iot_stream(
     session_id: str,
     db: DB,
     settings: AppSettings,
+    api_key: str = None,
 ):
     """
     WebSocket endpoint for real-time audio streaming (Raw PCM).
     Implements Fast vs Slow route fallback.
     """
+    if not api_key or api_key != settings.iot_api_key:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await websocket.accept()
     
     # Load FAQ for Fast Route
