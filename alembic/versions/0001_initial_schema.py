@@ -14,8 +14,10 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.core.security import get_password_hash
-from app.config import settings
+from app.core.security import hash_password as get_password_hash
+from app.config import get_settings
+
+settings = get_settings()
 
 # revision identifiers, used by Alembic.
 revision: str = '0001'
@@ -27,22 +29,11 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # 1. Enums
     userrole_enum = postgresql.ENUM('user', 'admin', name='userrole')
-    userrole_enum.create(op.get_bind())
-    
     messagerole_enum = postgresql.ENUM('user', 'assistant', 'system', name='messagerole')
-    messagerole_enum.create(op.get_bind())
-    
     mediatype_enum = postgresql.ENUM('image', 'video', name='mediatype')
-    mediatype_enum.create(op.get_bind())
-    
     mediastatus_enum = postgresql.ENUM('processing', 'completed', 'failed', name='mediastatus')
-    mediastatus_enum.create(op.get_bind())
-    
     jobstatus_enum = postgresql.ENUM('queued', 'processing', 'completed', 'failed', name='jobstatus')
-    jobstatus_enum.create(op.get_bind())
-    
     iotmessagerole_enum = postgresql.ENUM('user', 'assistant', name='iotmessagerole')
-    iotmessagerole_enum.create(op.get_bind())
 
     # 2. Tables
     users_table = op.create_table(
@@ -151,13 +142,13 @@ def upgrade() -> None:
     op.create_index(op.f('ix_iot_messages_iot_session_id'), 'iot_messages', ['iot_session_id'], unique=False)
 
     # 3. Admin Seeding
-    if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD:
+    if settings.admin_email and settings.admin_password:
         op.execute(
             users_table.insert().values(
                 id=uuid.uuid4(),
-                email=settings.ADMIN_EMAIL,
+                email=settings.admin_email,
                 username="admin",
-                hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
+                hashed_password=get_password_hash(settings.admin_password),
                 role='admin',
                 is_active=True,
                 created_at=datetime.now(timezone.utc),

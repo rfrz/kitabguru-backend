@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
+from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +36,7 @@ async def get_current_user(
         if not user_id_str:
             raise exc
         user_id = uuid.UUID(user_id_str)
-    except (JWTError, ValueError):
+    except (PyJWTError, ValueError):
         raise exc
 
     result = await db.execute(

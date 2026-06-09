@@ -11,9 +11,14 @@ from app.config import Settings
 class InferenceClient:
     def __init__(self, settings: Settings):
         self.base_url = settings.inference_base_url.rstrip("/")
+        headers = {}
+        if settings.hf_token:
+            headers["Authorization"] = f"Bearer {settings.hf_token}"
+            
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=120.0,  # LLM inference can take a while
+            headers=headers,
         )
 
     async def chat(self, query: str, book_filter: Optional[str] = None) -> dict[str, Any]:

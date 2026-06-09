@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     # Inference Service
     inference_base_url: str = "http://localhost:8000"
+    hf_token: Optional[str] = None
 
     # IoT
     iot_api_key: str = "change-this-iot-key"

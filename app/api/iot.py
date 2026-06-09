@@ -196,7 +196,11 @@ async def iot_stream(
             if "tidak tahu" in answer.lower():
                 route_taken = "slow_rag"
                 try:
-                    async with httpx.AsyncClient() as http_client:
+                    headers = {}
+                    if settings.hf_token:
+                        headers["Authorization"] = f"Bearer {settings.hf_token}"
+                        
+                    async with httpx.AsyncClient(headers=headers) as http_client:
                         res = await http_client.post(
                             f"{settings.inference_base_url}/api/v1/chat",
                             json={"query": transcription}
