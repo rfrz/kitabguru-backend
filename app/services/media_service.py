@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.models.media import GeneratedMedia, JobStatus, MediaJob, MediaStatus, MediaType
-from app.models.user import ChatSession, Message, User
+from app.models.user import ChatSession, Message, MessageRole, User
 from app.providers.cloudflare_image import CloudflareImageClient, CloudflareImageError
 from app.providers.inference_client import InferenceClient
+from app.providers.light_llm import LightLLMClient
 from app.schemas.media import ImageGenerateResponse, VideoGenerateResponse
 from app.tasks.video_pipeline import run_video_pipeline
 
@@ -25,7 +26,7 @@ class MediaService:
 
     # ─── Image Generation ─────────────────────────────────────────────────
 
-    async def generate_image(self, session_id: str, user: User) -> ImageGenerateResponse:
+    async def generate_image(self, session_id: str, message_id: str | None, user: User) -> ImageGenerateResponse:
         """
         1. Load session history
         2. Generate image prompt via inference
@@ -36,7 +37,7 @@ class MediaService:
         session = await self._get_session_or_404(session_id, user)
 
         # Step 1: Generate image prompt from chat context
-        prompt = await self._build_image_prompt(session)
+        prompt = await self._build_image_prompt(session, message_id)
 
         # Step 2: Generate image via Cloudflare Workers AI
         try:
@@ -69,6 +70,20 @@ class MediaService:
         from datetime import datetime, timezone
         media.completed_at = datetime.now(timezone.utc)
         self.db.add(media)
+        
+        # Step 5: Insert as new chat message
+        new_msg = Message(
+            session_id=session.id,
+            role=MessageRole.assistant,
+            content="Berikut adalah media yang di-generate berdasarkan konteks percakapan kita:",
+            meta={
+                "media_type": "image",
+                "url": f"{self.settings.media_base_url}/{relative_path}",
+                "media_id": str(media_id)
+            }
+        )
+        self.db.add(new_msg)
+
         await self.db.commit()
         await self.db.refresh(media)
 
@@ -85,6 +100,7 @@ class MediaService:
     async def start_video_job(
         self,
         session_id: str,
+        message_id: str | None,
         user: User,
         background_tasks: BackgroundTasks,
         session_maker,
@@ -98,7 +114,7 @@ class MediaService:
         session = await self._get_session_or_404(session_id, user)
 
         # Build narration script from chat context
-        narration = await self._build_narration(session)
+        narration = await self._build_narration(session, message_id)
 
         # Create media + job records
         media_id = uuid.uuid4()
@@ -158,36 +174,40 @@ class MediaService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         return session
 
-    async def _build_image_prompt(self, session: ChatSession) -> str:
-        """Summarize the chat session into an image generation prompt via inference."""
+    async def _build_image_prompt(self, session: ChatSession, message_id: str | None) -> str:
+        """Summarize the chat session into an image generation prompt via LightLLM."""
         if not session.messages:
             return "An Islamic educational scene with books and geometric patterns"
 
-        # Take last N messages for context
-        window = self.settings.chat_context_window
-        messages = session.messages[-window:] if window > 0 else session.messages
+        messages = session.messages
+        if message_id:
+            # Find the target message and slice
+            try:
+                msg_uuid = uuid.UUID(message_id)
+                idx = next(i for i, m in enumerate(messages) if m.id == msg_uuid)
+                messages = messages[:idx + 1]
+            except (ValueError, StopIteration):
+                pass  # Fallback to full context if not found
+
         context = "\n".join([f"{m.role.value}: {m.content}" for m in messages])
 
-        prompt_request = (
-            f"Based on this educational conversation, create a concise image generation prompt "
-            f"(max 150 words) that visually represents the main topic. "
-            f"Style: Islamic geometric art, educational, professional, vibrant colors.\n\n"
-            f"Conversation:\n{context[:3000]}"
-        )
+        # Use the LightLLMClient
+        llm = LightLLMClient(self.settings)
+        return await llm.generate_image_prompt(context[:5000])
 
-        try:
-            response = await self.inference_client.chat(query=prompt_request)
-            return response.get("answer", "")[:500] or "Islamic educational geometric art"
-        except Exception:
-            return "An Islamic educational scene with geometric patterns and books"
-
-    async def _build_narration(self, session: ChatSession) -> str:
+    async def _build_narration(self, session: ChatSession, message_id: str | None) -> str:
         """Summarize chat session into narration script for video TTS."""
         if not session.messages:
             return "Selamat datang di KitabGuru, platform pembelajaran Islam berbasis AI."
 
-        window = self.settings.chat_context_window
-        messages = session.messages[-window:] if window > 0 else session.messages
+        if message_id:
+            try:
+                msg_uuid = uuid.UUID(message_id)
+                idx = next(i for i, m in enumerate(messages) if m.id == msg_uuid)
+                messages = messages[:idx + 1]
+            except (ValueError, StopIteration):
+                pass
+        
         context = "\n".join([f"{m.role.value}: {m.content}" for m in messages])
 
         narration_request = (

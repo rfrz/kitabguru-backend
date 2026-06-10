@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # IoT
     iot_api_key: str = "change-this-iot-key"
 
+    # Light LLM Pipeline (for image prompt translation)
+    llm_fallback_order: str = "gemini,openai_compatible"
+    gemini_api_key: Optional[str] = None
+    gemini_llm_model: str = "gemini-3.1-flash-lite"
+    openai_compatible_api_key: Optional[str] = None
+    openai_compatible_base_url: Optional[str] = None
+    openai_compatible_model: Optional[str] = None
+
     # Cloudflare Workers AI (Image Generation)
     cf_account_id: Optional[str] = None
     cf_api_token: Optional[str] = None

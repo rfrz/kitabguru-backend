@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class ImageGenerateRequest(BaseModel):
     session_id: str
+    message_id: Optional[str] = None
 
 
 class ImageGenerateResponse(BaseModel):

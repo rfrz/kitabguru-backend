@@ -35,6 +35,10 @@ dependencies = [
     "python-dateutil>=2.9.0",
     "aiofiles>=23.0.0",
     "slowapi>=0.1.9",
+
+    # Light LLM Pipeline
+    "google-genai>=0.5.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

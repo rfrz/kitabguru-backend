@@ -48,7 +48,7 @@ async def generate_image(
     """
     inference_client = request.app.state.inference_client
     service = MediaService(db, settings, inference_client)
-    return await service.generate_image(body.session_id, current_user)
+    return await service.generate_image(body.session_id, body.message_id, current_user)
 
 
 @router.post(
@@ -73,7 +73,7 @@ async def generate_video(
     inference_client = request.app.state.inference_client
     session_maker = request.app.state.session_maker
     service = MediaService(db, settings, inference_client)
-    return await service.start_video_job(body.session_id, current_user, background_tasks, session_maker)
+    return await service.start_video_job(body.session_id, body.message_id, current_user, background_tasks, session_maker)
 
 
 @router.get(
