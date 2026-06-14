@@ -32,46 +32,83 @@ async def run_video_pipeline(
 ) -> None:
     """
     Full async video generation pipeline:
-    1. TTS: narration → audio.wav
-    2. Render: Islamic-styled slide.png (Pillow)
-    3. FFmpeg: slide + audio → output.mp4
-    4. Update DB with result
+    1. Parse text into sentence chunks.
+    2. For each chunk:
+       a. Synthesize audio.wav (EdgeTTS)
+       b. Render slide.png with template + text
+       c. Create clip.mp4 with FFmpeg
+    3. Concat all clip.mp4 files into final output.mp4
+    4. Clean up temp files.
+    5. Update DB with result.
     """
+    import re
+
     media_dir = Path(settings.media_dir)
     job_dir = media_dir / str(media_id)
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_path = job_dir / "narration.wav"
-    slide_path = job_dir / "slide.png"
     video_path = job_dir / f"{media_id}.mp4"
+    list_path = job_dir / "clips.txt"
 
     async with session_maker() as db:
         await _update_job(db, job_id, JobStatus.processing, progress_pct=0)
 
+    # Split text into sentence chunks
+    # Match sentences ending with . ! or ? or newlines
+    raw_sentences = re.split(r'(?<=[.!?])\s+|\n+', narration_text.strip())
+    chunks = [s.strip() for s in raw_sentences if s.strip()]
+    if not chunks:
+        chunks = [narration_text.strip()]
+
+    temp_files = [list_path]
+    clip_paths = []
+
     try:
-        # ── Step 1: TTS (20%) ──────────────────────────────────────────────
-        logger.info("[video:%s] Step 1/3 — TTS synthesis", job_id)
-        tts = EdgeTTSClient(settings)
-        await tts.synthesize(narration_text, str(audio_path))
-        async with session_maker() as db:
-            await _update_job(db, job_id, JobStatus.processing, progress_pct=33)
+        # Iterate over chunks to build individual clips
+        for i, chunk in enumerate(chunks):
+            logger.info("[video:%s] Processing chunk %d/%d: %s", job_id, i + 1, len(chunks), chunk)
+            
+            chunk_audio_path = job_dir / f"audio_{i}.wav"
+            chunk_slide_path = job_dir / f"slide_{i}.png"
+            chunk_clip_path = job_dir / f"clip_{i}.mp4"
+            
+            temp_files.extend([chunk_audio_path, chunk_slide_path, chunk_clip_path])
+            
+            # Step 1: TTS
+            tts = EdgeTTSClient(settings)
+            await tts.synthesize(chunk, str(chunk_audio_path))
+            
+            # Step 2: Render Slide
+            await asyncio.get_event_loop().run_in_executor(
+                None, _render_islamic_slide, str(chunk_slide_path), chunk, settings
+            )
+            
+            # Step 3: FFmpeg combine slide & audio into a clip
+            await asyncio.get_event_loop().run_in_executor(
+                None, _run_ffmpeg, str(chunk_slide_path), str(chunk_audio_path), str(chunk_clip_path), settings
+            )
+            
+            clip_paths.append(chunk_clip_path)
+            
+            # Update DB progress (scales up to 90%)
+            progress = int((i + 1) / len(chunks) * 90)
+            async with session_maker() as db:
+                await _update_job(db, job_id, JobStatus.processing, progress_pct=progress)
 
-        # ── Step 2: Render Islamic Slide (60%) ─────────────────────────────
-        logger.info("[video:%s] Step 2/3 — Slide render", job_id)
+        # Step 4: Concatenate all clips
+        logger.info("[video:%s] Concatenating %d clips into final video", job_id, len(clip_paths))
+        
+        # Write the FFmpeg concat file list.txt
+        with open(list_path, "w", encoding="utf-8") as f:
+            for cp in clip_paths:
+                f.write(f"file '{cp.name}'\n")
+        
         await asyncio.get_event_loop().run_in_executor(
-            None, _render_islamic_slide, str(slide_path), narration_text, settings
-        )
-        async with session_maker() as db:
-            await _update_job(db, job_id, JobStatus.processing, progress_pct=66)
-
-        # ── Step 3: FFmpeg combine (100%) ──────────────────────────────────
-        logger.info("[video:%s] Step 3/3 — FFmpeg combine", job_id)
-        await asyncio.get_event_loop().run_in_executor(
-            None, _run_ffmpeg, str(slide_path), str(audio_path), str(video_path), settings
+            None, _run_ffmpeg_concat, str(list_path), str(video_path), settings
         )
 
         # ── Save result to DB ──────────────────────────────────────────────
-        relative_path = str(video_path.relative_to(media_dir))
+        relative_path = str(video_path.relative_to(media_dir)).replace("\\", "/")
         file_size = video_path.stat().st_size if video_path.exists() else None
 
         async with session_maker() as db:
@@ -80,13 +117,14 @@ async def run_video_pipeline(
                 file_path=relative_path,
                 file_size=file_size,
                 success=True,
+                settings=settings,
             )
         logger.info("[video:%s] Pipeline complete → %s", job_id, video_path)
 
     except Exception as exc:
         logger.exception("[video:%s] Pipeline failed: %s", job_id, exc)
         async with session_maker() as db:
-            await _finalize_media(db, job_id, media_id, error=str(exc))
+            await _finalize_media(db, job_id, media_id, error=str(exc), settings=settings)
 
 
 # ─── Rendering Utilities ──────────────────────────────────────────────────────
@@ -99,39 +137,30 @@ def _render_islamic_slide(
     """
     Render an Islamic-aesthetic slide using Pillow.
     Palette: deep navy bg, gold accents, warm white text.
+    Loads a template background image from assets if available.
     """
     W, H = settings.video_slide_width, settings.video_slide_height
-    bg_color = settings.video_slide_bg_color
     accent = settings.video_slide_accent_color
     text_color = settings.video_slide_text_color
     sub_color = settings.video_slide_sub_color
 
-    img = Image.new("RGB", (W, H), color=bg_color)
+    # Load background template
+    assets_dir = Path(__file__).parent.parent / "assets"
+    bg_template_path = assets_dir / "bg_template.png"
+
+    if bg_template_path.exists():
+        img = Image.open(bg_template_path).convert("RGB")
+        if img.size != (W, H):
+            img = img.resize((W, H), Image.Resampling.LANCZOS)
+    else:
+        logger.warning("bg_template.png not found at %s. Falling back to solid color bg.", bg_template_path)
+        bg_color = settings.video_slide_bg_color
+        img = Image.new("RGB", (W, H), color=bg_color)
+
     draw = ImageDraw.Draw(img)
 
-    # ── Decorative border lines ───────────────────────────────────────────
-    border = 18
-    draw.rectangle([border, border, W - border, H - border], outline=accent, width=2)
+    # ── Text bounding box bounds ──────────────────────────────────────────
     inner = 30
-    draw.rectangle([inner, inner, W - inner, H - inner], outline=accent, width=1)
-
-    # ── Corner geometric diamonds ─────────────────────────────────────────
-    d_size = 12
-    corners = [
-        (inner, inner), (W - inner, inner),
-        (inner, H - inner), (W - inner, H - inner),
-    ]
-    for cx, cy in corners:
-        draw.polygon(
-            [(cx, cy - d_size), (cx + d_size, cy), (cx, cy + d_size), (cx - d_size, cy)],
-            fill=accent,
-        )
-
-    # ── Horizontal accent lines ───────────────────────────────────────────
-    line_y_top = H // 5
-    line_y_bot = H - H // 5
-    draw.line([(inner + 20, line_y_top), (W - inner - 20, line_y_top)], fill=accent, width=1)
-    draw.line([(inner + 20, line_y_bot), (W - inner - 20, line_y_bot)], fill=accent, width=1)
 
     # ── Try to load fonts, fallback to default ────────────────────────────
     try:
@@ -150,7 +179,7 @@ def _render_islamic_slide(
     draw.text((W // 2, H // 6 + 30), _STAR_PATTERN, font=font_small, fill=sub_color, anchor="mm")
 
     # ── Main narration text (word-wrapped) ────────────────────────────────
-    _draw_wrapped_text(draw, text, font=font_text, fill=text_color, box=(inner + 60, H // 3, W - inner - 60), line_spacing=36)
+    _draw_wrapped_text(draw, text, font=font_text, fill=text_color, box=(inner + 60, H // 3, W - inner - 60, H - H // 3), line_spacing=36)
 
     # ── Footer ────────────────────────────────────────────────────────────
     draw.text((W // 2, H - H // 6), "KitabGuru", font=font_small, fill=sub_color, anchor="mm")
@@ -224,6 +253,29 @@ def _run_ffmpeg(
         raise RuntimeError(f"FFmpeg failed: {result.stderr}")
 
 
+def _run_ffmpeg_concat(
+    list_path: str,
+    output_path: str,
+    settings: Settings,
+) -> None:
+    """
+    Run FFmpeg concat demuxer synchronously to merge clips.
+    """
+    cwd = str(Path(list_path).parent)
+    cmd = [
+        settings.ffmpeg_path,
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", Path(list_path).name,
+        "-c", "copy",
+        Path(output_path).name,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg concat failed: {result.stderr}")
+
+
 # ─── DB Helpers ───────────────────────────────────────────────────────────────
 
 async def _update_job(
@@ -251,6 +303,7 @@ async def _finalize_media(
     file_size: int | None = None,
     success: bool = False,
     error: str | None = None,
+    settings: Settings = None,
 ) -> None:
     from sqlalchemy import select
     now = datetime.now(timezone.utc)
@@ -271,6 +324,21 @@ async def _finalize_media(
             media.file_path = file_path
             media.file_size_bytes = file_size
             media.completed_at = now
+
+            if settings:
+                from app.models.user import Message, MessageRole
+                video_url = f"{settings.media_base_url}/{file_path}"
+                new_msg = Message(
+                    session_id=media.session_id,
+                    role=MessageRole.assistant,
+                    content="Berikut adalah video yang di-generate berdasarkan konteks percakapan kita:",
+                    meta={
+                        "media_type": "video",
+                        "url": video_url,
+                        "media_id": str(media_id)
+                    }
+                )
+                db.add(new_msg)
         else:
             media.error_message = error
 

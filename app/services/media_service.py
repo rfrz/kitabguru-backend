@@ -206,6 +206,7 @@ class MediaService:
         if not session.messages:
             return "Selamat datang di KitabGuru, platform pembelajaran Islam berbasis AI."
 
+        messages = session.messages
         if message_id:
             try:
                 msg_uuid = uuid.UUID(message_id)

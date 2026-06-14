@@ -18,6 +18,7 @@ class ImageGenerateResponse(BaseModel):
 
 class VideoGenerateRequest(BaseModel):
     session_id: str
+    message_id: Optional[str] = None
 
 
 class VideoGenerateResponse(BaseModel):
