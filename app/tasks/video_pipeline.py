@@ -56,7 +56,7 @@ async def run_video_pipeline(
 
     # Split text into sentence chunks
     # Match sentences ending with . ! or ? or newlines
-    raw_sentences = re.split(r'(?<=[.!?])\s+|\n+', narration_text.strip())
+    raw_sentences = re.split(r'(?<=[.!?。！？])\s*|\n+', narration_text.strip())
     chunks = [s.strip() for s in raw_sentences if s.strip()]
     if not chunks:
         chunks = [narration_text.strip()]
@@ -82,7 +82,7 @@ async def run_video_pipeline(
             
             # Step 2: Render Slide
             await asyncio.get_event_loop().run_in_executor(
-                None, _render_islamic_slide, str(chunk_slide_path), chunk, settings
+                None, _render_islamic_slide, str(chunk_slide_path), chunk, settings, language_code
             )
             
             # Step 3: FFmpeg combine slide & audio into a clip
@@ -127,6 +127,13 @@ async def run_video_pipeline(
         logger.exception("[video:%s] Pipeline failed: %s", job_id, exc)
         async with session_maker() as db:
             await _finalize_media(db, job_id, media_id, error=str(exc), settings=settings)
+    finally:
+        for tmp_file in temp_files:
+            try:
+                if tmp_file.exists():
+                    tmp_file.unlink()
+            except Exception as e:
+                logger.warning("[video:%s] Failed to delete temp file %s: %s", job_id, tmp_file, e)
 
 
 # ─── Rendering Utilities ──────────────────────────────────────────────────────
@@ -157,15 +164,29 @@ def get_voice_for_language(language_code: str) -> str:
     return "id-ID-ArdiNeural"
 
 
-def _ensure_roboto_font() -> Path:
-    """Ensure Roboto-Medium.ttf exists in app/assets, downloading it if necessary."""
+def _get_font_info_for_language(language_code: str) -> tuple[str, str]:
+    """Return (font_filename, font_download_url) based on language code."""
+    lang = language_code.lower().strip()
+    if lang.startswith("ja"):
+        return ("NotoSansJP-Medium.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Medium.otf")
+    elif lang.startswith("zh"):
+        return ("NotoSansSC-Medium.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Medium.otf")
+    elif lang.startswith("ko"):
+        return ("NotoSansKR-Medium.otf", "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Korean/NotoSansCJKkr-Medium.otf")
+    elif lang.startswith("ar"):
+        return ("NotoSansArabic-Medium.ttf", "https://raw.githubusercontent.com/notofonts/arabic/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Medium.ttf")
+    return ("Roboto-Medium.ttf", "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf")
+
+
+def _ensure_font_for_language(language_code: str) -> Path:
+    """Ensure font for language exists in app/assets, downloading it if necessary."""
+    font_filename, url = _get_font_info_for_language(language_code)
     assets_dir = Path(__file__).parent.parent / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    font_path = assets_dir / "Roboto-Medium.ttf"
+    font_path = assets_dir / font_filename
     if not font_path.exists():
         import urllib.request
-        url = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf"
-        logger.info("Downloading Roboto-Medium.ttf from %s to %s", url, font_path)
+        logger.info("Downloading %s from %s to %s", font_filename, url, font_path)
         try:
             req = urllib.request.Request(
                 url, 
@@ -173,9 +194,9 @@ def _ensure_roboto_font() -> Path:
             )
             with urllib.request.urlopen(req) as response, open(font_path, 'wb') as out_file:
                 out_file.write(response.read())
-            logger.info("Successfully downloaded Roboto-Medium.ttf")
+            logger.info("Successfully downloaded %s", font_filename)
         except Exception as e:
-            logger.error("Failed to download Roboto-Medium.ttf: %s. Falling back to system fonts.", e)
+            logger.error("Failed to download %s: %s. Falling back to system fonts.", font_filename, e)
     return font_path
 
 
@@ -183,6 +204,7 @@ def _render_islamic_slide(
     output_path: str,
     text: str,
     settings: Settings,
+    language_code: str = "id",
 ) -> None:
     """
     Render an Islamic-aesthetic slide using Pillow.
@@ -213,7 +235,7 @@ def _render_islamic_slide(
     inner = 30
 
     # ── Try to load fonts, fallback to default ────────────────────────────
-    font_path = _ensure_roboto_font()
+    font_path = _ensure_font_for_language(language_code)
     try:
         # Scale font down dynamically if text is long
         text_size = 54
