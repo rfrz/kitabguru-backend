@@ -31,10 +31,10 @@ class LightLLMClient:
         """
         system_instruction = (
             "You are an assistant that creates prompts for an image generation model (SDXL). "
-            "Read the following Indonesian educational conversation, extract the core visual subject, "
-            "and write a highly descriptive, concise English prompt (max 70 words). "
-            "Focus on visual elements: subject, action, lighting, environment, and style "
-            "(e.g., 'Islamic geometric art style, vibrant colors, high quality'). "
+            "Read the following Indonesian educational conversation and extract the core factual subject. "
+            "Write a highly descriptive, concise English prompt (max 70 words) to create an INFOGRAPHIC or ILLUSTRATED POSTER about the subject. "
+            "Focus on visual elements: subject, typography layout, informative aesthetic, and style "
+            "(e.g., 'Infographic style, clean layout, Islamic geometric borders, educational poster, high quality'). "
             "Output ONLY the prompt string, no markdown, no quotes, no conversational text."
         )
 
@@ -78,7 +78,7 @@ class LightLLMClient:
                 max_output_tokens=150,
             )
         )
-        return response.text.strip()
+        return response.text.strip() if response.text else None
 
     async def _call_openai_compatible(self, system: str, user_text: str) -> Optional[str]:
         if not self.settings.openai_compatible_api_key or not self.settings.openai_compatible_base_url or not self.settings.openai_compatible_model:

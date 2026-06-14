@@ -189,7 +189,13 @@ class MediaService:
             except (ValueError, StopIteration):
                 pass  # Fallback to full context if not found
 
-        context = "\n".join([f"{m.role.value}: {m.content}" for m in messages])
+        import re
+        cleaned_messages = []
+        for m in messages:
+            clean_content = re.sub(r'\[S\d+\]', '', m.content)
+            cleaned_messages.append(f"{m.role.value}: {clean_content}")
+
+        context = "\n".join(cleaned_messages)
 
         # Use the LightLLMClient
         llm = LightLLMClient(self.settings)
