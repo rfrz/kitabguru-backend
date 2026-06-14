@@ -19,11 +19,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import DB, AdminUser
+from app.core.security import hash_password
 from app.models.iot import IoTSession, IoTMessage
 from app.models.user import ChatSession, Message, User, UserRole
 from app.schemas.chat import MessageOut, SessionDetailResponse, SessionSummary
 from app.schemas.iot import IoTMessageOut, IoTSessionDetailResponse, IoTSessionListResponse, IoTSessionSummary
-from app.schemas.user import UserAdminUpdateRequest, UserDetailAdmin, UserListResponse
+from app.schemas.user import UserAdminCreateRequest, UserAdminUpdateRequest, UserDetailAdmin, UserListResponse
 
 router = APIRouter()
 
@@ -195,6 +196,69 @@ async def delete_user(
         )
     await db.delete(user)
     await db.commit()
+
+
+@router.post(
+    "/users",
+    response_model=UserDetailAdmin,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user directly (admin)",
+)
+async def create_user_admin(
+    body: UserAdminCreateRequest,
+    admin: AdminUser,
+    db: DB,
+):
+    # Check if username or email already exists
+    existing_username = await db.execute(
+        select(User).where(User.username == body.username, User.deleted_at.is_(None))
+    )
+    if existing_username.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already in use",
+        )
+
+    existing_email = await db.execute(
+        select(User).where(User.email == body.email, User.deleted_at.is_(None))
+    )
+    if existing_email.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use",
+        )
+
+    try:
+        role_enum = UserRole(body.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role: {body.role}. Must be 'user' or 'admin'",
+        )
+
+    new_user = User(
+        username=body.username,
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        role=role_enum,
+        is_active=True,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+
+    return UserDetailAdmin(
+        id=str(new_user.id),
+        email=new_user.email,
+        username=new_user.username,
+        role=new_user.role.value,
+        is_active=new_user.is_active,
+        created_at=new_user.created_at,
+        updated_at=new_user.updated_at,
+        deleted_at=new_user.deleted_at,
+        session_count=0,
+        message_count=0,
+    )
 
 
 # ─── Chat Session Management ─────────────────────────────────────────────────

@@ -48,6 +48,15 @@ class UserAdminUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
 
 
+class UserAdminCreateRequest(BaseModel):
+    """Admin can create a new user directly."""
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    role: str = "user"
+
+
+
 class UserListResponse(BaseModel):
     users: list[UserDetailAdmin]
     total: int
