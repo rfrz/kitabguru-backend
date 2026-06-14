@@ -17,14 +17,14 @@ class EdgeTTSClient:
         self.rate = settings.tts_rate
         self.volume = settings.tts_volume
 
-    async def synthesize(self, text: str, output_path: str) -> str:
+    async def synthesize(self, text: str, output_path: str, voice: str | None = None) -> str:
         """
         Convert text to audio file at output_path.
         Returns the output_path on success.
         """
         communicate = edge_tts.Communicate(
             text=text,
-            voice=self.voice,
+            voice=voice or self.voice,
             rate=self.rate,
             volume=self.volume,
         )

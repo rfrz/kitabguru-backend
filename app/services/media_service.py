@@ -114,7 +114,7 @@ class MediaService:
         session = await self._get_session_or_404(session_id, user)
 
         # Build narration script from chat context
-        narration = await self._build_narration(session, message_id)
+        script_data = await self._build_narration(session, message_id)
 
         # Create media + job records
         media_id = uuid.uuid4()
@@ -126,7 +126,7 @@ class MediaService:
             user_id=user.id,
             media_type=MediaType.video,
             file_path=f"{media_id}/{media_id}.mp4",
-            prompt_used=narration,
+            prompt_used=script_data["script_text"],
             status=MediaStatus.processing,
         )
         job = MediaJob(
@@ -144,7 +144,8 @@ class MediaService:
             run_video_pipeline,
             job_id=job_id,
             media_id=media_id,
-            narration_text=narration,
+            narration_text=script_data["script_text"],
+            language_code=script_data["language_code"],
             session_maker=session_maker,
             settings=self.settings,
         )
@@ -201,10 +202,13 @@ class MediaService:
         llm = LightLLMClient(self.settings)
         return await llm.generate_image_prompt(context[:5000])
 
-    async def _build_narration(self, session: ChatSession, message_id: str | None) -> str:
-        """Summarize chat session into narration script for video TTS."""
+    async def _build_narration(self, session: ChatSession, message_id: str | None) -> dict:
+        """Summarize chat session into narration script and language code for video TTS."""
         if not session.messages:
-            return "Selamat datang di KitabGuru, platform pembelajaran Islam berbasis AI."
+            return {
+                "language_code": "id-ID",
+                "script_text": "Selamat datang di KitabGuru, platform pembelajaran Islam berbasis AI."
+            }
 
         messages = session.messages
         if message_id:
@@ -215,17 +219,13 @@ class MediaService:
             except (ValueError, StopIteration):
                 pass
         
-        context = "\n".join([f"{m.role.value}: {m.content}" for m in messages])
+        import re
+        cleaned_messages = []
+        for m in messages:
+            clean_content = re.sub(r'\[S\d+\]', '', m.content)
+            cleaned_messages.append(f"{m.role.value}: {clean_content}")
 
-        narration_request = (
-            f"Buatlah narasi video edukatif dalam Bahasa Indonesia berdasarkan percakapan berikut. "
-            f"Narasi harus informatif, mudah dipahami, dan berdurasi sekitar 60-90 detik saat dibaca. "
-            f"Mulai dengan 'Bismillah' dan akhiri dengan kalimat penutup yang inspiratif.\n\n"
-            f"Percakapan:\n{context[:3000]}"
-        )
+        context = "\n".join(cleaned_messages)
 
-        try:
-            response = await self.inference_client.chat(query=narration_request)
-            return response.get("answer", "") or "Bismillahirrahmanirrahim. Selamat belajar bersama KitabGuru."
-        except Exception:
-            return "Bismillahirrahmanirrahim. Selamat belajar bersama KitabGuru, platform pendidikan Islam berbasis AI."
+        llm = LightLLMClient(self.settings)
+        return await llm.generate_video_script(context[:5000])

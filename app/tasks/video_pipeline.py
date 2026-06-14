@@ -27,6 +27,7 @@ async def run_video_pipeline(
     job_id: uuid.UUID,
     media_id: uuid.UUID,
     narration_text: str,
+    language_code: str,
     session_maker,  # async_sessionmaker
     settings: Settings,
 ) -> None:
@@ -75,8 +76,9 @@ async def run_video_pipeline(
             temp_files.extend([chunk_audio_path, chunk_slide_path, chunk_clip_path])
             
             # Step 1: TTS
+            voice = get_voice_for_language(language_code)
             tts = EdgeTTSClient(settings)
-            await tts.synthesize(chunk, str(chunk_audio_path))
+            await tts.synthesize(chunk, str(chunk_audio_path), voice=voice)
             
             # Step 2: Render Slide
             await asyncio.get_event_loop().run_in_executor(
@@ -129,6 +131,54 @@ async def run_video_pipeline(
 
 # ─── Rendering Utilities ──────────────────────────────────────────────────────
 
+def get_voice_for_language(language_code: str) -> str:
+    """Map language code to standard neural voices supported by EdgeTTS."""
+    lang = language_code.lower().strip()
+    if lang.startswith("id"):
+        return "id-ID-ArdiNeural"
+    elif lang.startswith("en"):
+        return "en-US-AriaNeural"
+    elif lang.startswith("ja"):
+        return "ja-JP-NanamiNeural"
+    elif lang.startswith("ar"):
+        return "ar-SA-HamedNeural"
+    elif lang.startswith("ms"):
+        return "ms-MY-YasminNeural"
+    elif lang.startswith("zh"):
+        return "zh-CN-XiaoxiaoNeural"
+    elif lang.startswith("tr"):
+        return "tr-TR-AhmetNeural"
+    elif lang.startswith("fr"):
+        return "fr-FR-DeniseNeural"
+    elif lang.startswith("es"):
+        return "es-ES-AlvaroNeural"
+    elif lang.startswith("de"):
+        return "de-DE-KillianNeural"
+    return "id-ID-ArdiNeural"
+
+
+def _ensure_roboto_font() -> Path:
+    """Ensure Roboto-Medium.ttf exists in app/assets, downloading it if necessary."""
+    assets_dir = Path(__file__).parent.parent / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    font_path = assets_dir / "Roboto-Medium.ttf"
+    if not font_path.exists():
+        import urllib.request
+        url = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf"
+        logger.info("Downloading Roboto-Medium.ttf from %s to %s", url, font_path)
+        try:
+            req = urllib.request.Request(
+                url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req) as response, open(font_path, 'wb') as out_file:
+                out_file.write(response.read())
+            logger.info("Successfully downloaded Roboto-Medium.ttf")
+        except Exception as e:
+            logger.error("Failed to download Roboto-Medium.ttf: %s. Falling back to system fonts.", e)
+    return font_path
+
+
 def _render_islamic_slide(
     output_path: str,
     text: str,
@@ -163,10 +213,23 @@ def _render_islamic_slide(
     inner = 30
 
     # ── Try to load fonts, fallback to default ────────────────────────────
+    font_path = _ensure_roboto_font()
     try:
-        font_title = ImageFont.truetype("arial.ttf", 28)
-        font_text = ImageFont.truetype("arial.ttf", 22)
-        font_small = ImageFont.truetype("arial.ttf", 16)
+        # Scale font down dynamically if text is long
+        text_size = 54
+        if len(text) > 80:
+            text_size = 42
+        if len(text) > 120:
+            text_size = 32
+
+        if font_path.exists():
+            font_title = ImageFont.truetype(str(font_path), 32)
+            font_text = ImageFont.truetype(str(font_path), text_size)
+            font_small = ImageFont.truetype(str(font_path), 18)
+        else:
+            font_title = ImageFont.truetype("arial.ttf", 32)
+            font_text = ImageFont.truetype("arial.ttf", text_size)
+            font_small = ImageFont.truetype("arial.ttf", 18)
     except Exception:
         font_title = ImageFont.load_default()
         font_text = font_title
@@ -179,7 +242,8 @@ def _render_islamic_slide(
     draw.text((W // 2, H // 6 + 30), _STAR_PATTERN, font=font_small, fill=sub_color, anchor="mm")
 
     # ── Main narration text (word-wrapped) ────────────────────────────────
-    _draw_wrapped_text(draw, text, font=font_text, fill=text_color, box=(inner + 60, H // 3, W - inner - 60, H - H // 3), line_spacing=36)
+    line_spacing = int(text_size * 1.3)
+    _draw_wrapped_text(draw, text, font=font_text, fill=text_color, box=(inner + 60, H // 4, W - inner - 60, H - H // 4), line_spacing=line_spacing)
 
     # ── Footer ────────────────────────────────────────────────────────────
     draw.text((W // 2, H - H // 6), "KitabGuru", font=font_small, fill=sub_color, anchor="mm")
