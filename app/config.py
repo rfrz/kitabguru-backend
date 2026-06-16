@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,19 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://kitabguru:secret@localhost:5432/kitabguru_db"
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def clean_database_url(cls, v: str) -> str:
+        # Many PaaS providers use postgres://, but asyncpg needs postgresql+asyncpg://
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        # asyncpg doesn't support sslmode=require in the connection string kwargs
+        if "?sslmode=require" in v:
+            v = v.replace("?sslmode=require", "")
+        elif "&sslmode=require" in v:
+            v = v.replace("&sslmode=require", "")
+        return v
 
     # JWT
     jwt_secret_key: str = "change-this-in-production"
