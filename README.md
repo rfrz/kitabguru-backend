@@ -59,3 +59,14 @@ Lihat `.env.example` untuk daftar lengkap konfigurasi.
 Setelah server berjalan, buka:
 - Swagger UI: `http://localhost:8001/docs`
 - ReDoc: `http://localhost:8001/redoc`
+
+## Deployment to Hugging Face Spaces
+
+Aplikasi ini sudah dikonfigurasi untuk berjalan di Hugging Face Spaces menggunakan Docker SDK. Konfigurasi HF Spaces telah disertakan pada YAML frontmatter di bagian atas file ini (`sdk: docker`, `app_port: 7860`).
+
+Untuk deploy:
+1. Buat Space baru di Hugging Face dengan memilih **Docker** sebagai Blank template.
+2. Push repositori ini ke Space tersebut.
+3. Buka pengaturan Space (Settings > Variables and secrets).
+4. Tambahkan seluruh environment variable yang dibutuhkan (seperti `DATABASE_URL`, kredensial JWT, API Keys untuk Groq/OpenAI/Gemini) sebagai **Secrets**.
+5. Hugging Face akan secara otomatis melakukan build Docker image berdasarkan `Dockerfile` di root folder backend ini dan menjalankannya di port `7860`.
