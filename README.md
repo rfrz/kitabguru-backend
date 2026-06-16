@@ -1,3 +1,13 @@
+---
+title: KitabGuru Backend
+emoji: 🗄️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # KitabGuru Backend
 
 FastAPI backend — pusat orkestrasi antara Frontend, Inference Engine, dan perangkat IoT.
