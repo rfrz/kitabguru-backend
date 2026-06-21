@@ -1,59 +1,98 @@
+# Bagian deklarasi metadata umum proyek
 [project]
+# Nama paket aplikasi backend
 name = "kitabguru-backend"
+# Versi rilis aplikasi saat ini
 version = "0.1.0"
+# Deskripsi fungsional singkat aplikasi
 description = "KitabGuru Backend — Auth, Chat Orchestration, Media Pipeline, IoT Coordination."
+# File dokumentasi utama proyek
 readme = "README.md"
+# Versi minimal interpreter Python yang dibutuhkan
 requires-python = ">=3.10"
+# Daftar paket pustaka (dependencies) wajib untuk menjalankan aplikasi backend
 dependencies = [
+    # Framework web utama untuk performa asinkron tinggi
     "fastapi>=0.115.0",
+    # Server web ASGI untuk menjalankan FastAPI
     "uvicorn[standard]>=0.30.0",
+    # Pustaka pengelola konfigurasi menggunakan file .env
     "pydantic-settings>=2.4.0",
+    # Mendukung pemrosesan request berformat form-data (seperti upload file)
     "python-multipart>=0.0.9",
+    # Validasi alamat email di skema Pydantic
     "email-validator>=2.0.0",
 
-    # Database
+    # Database (Akses data relasional)
+    # ORM SQLAlchemy beserta modul asinkronnya
     "sqlalchemy[asyncio]>=2.0.0",
+    # Driver database asinkron untuk PostgreSQL
     "asyncpg>=0.29.0",
+    # Pustaka pengendali migrasi skema database
     "alembic>=1.13.0",
 
-    # Auth & Security
+    # Auth & Security (Autentikasi & Keamanan)
+    # Pustaka enkripsi hashing password menggunakan algoritma bcrypt
     "bcrypt>=4.2.0",
+    # Pembuatan dan pemrosesan JSON Web Token (JWT)
     "PyJWT>=2.9.0",
 
-    # HTTP Client (proxy to inference)
+    # HTTP Client (Klien HTTP untuk komunikasi dengan mesin inferensi)
+    # Klien HTTP asinkron untuk request ke servis lain
     "httpx>=0.27.0",
 
-    # Media
+    # Media (Pemrosesan gambar dan suara)
+    # Sintesis suara Text-to-Speech Microsoft Edge gratis
     "edge-tts>=6.1.9",
+    # Pemrosesan gambar lokal (Pillow)
     "Pillow>=10.0.0",
 
-    # STT & TTS
+    # STT & TTS (Speech-to-Text dan Text-to-Speech alternatif)
+    # Klien API Groq untuk Whisper akselerasi LPU
     "groq>=0.9.0",
+    # Pustaka transkripsi audio offline cepat
     "faster-whisper>=1.0.0",
+    # Mesin TTS offline lokal Piper
     "piper-tts>=1.2.0",
 
-    # Utilities
+    # Utilities (Alat Pembantu)
+    # Parser tanggal dan zona waktu Python yang andal
     "python-dateutil>=2.9.0",
+    # Pengelolaan file sistem secara asinkron
     "aiofiles>=23.0.0",
+    # Pembatas frekuensi akses API (Rate limiting)
     "slowapi>=0.1.9",
 
-    # Light LLM Pipeline
+    # Light LLM Pipeline (Penerjemah prompt asinkron)
+    # SDK resmi Google GenAI untuk memanggil model Gemini
     "google-genai>=0.5.0",
+    # SDK resmi OpenAI untuk provider kompatibel format OpenAI
     "openai>=1.0.0",
 ]
 
+# Paket dependensi opsional (hanya diinstal di lingkungan pengembangan/dev)
 [project.optional-dependencies]
 dev = [
+    # Framework unit testing utama
     "pytest>=8.0.0",
+    # Integrasi pytest untuk pengujian fungsi asinkron
     "pytest-asyncio>=0.23.0",
+    # Pelaporan cakupan tes (test coverage)
     "pytest-cov>=5.0.0",
+    # Klien HTTP untuk simulasi panggil endpoint di unit test
     "httpx>=0.27.0",
 ]
 
+# Konfigurasi perkakas pytest untuk pengujian otomatis
 [tool.pytest.ini_options]
+# Menentukan folder tempat pencarian file test berada
 testpaths = ["tests"]
+# Menambahkan folder root proyek ke sys.path saat testing berjalan
 pythonpath = ["."]
+# Mengaktifkan mode deteksi asinkron otomatis pada pytest
 asyncio_mode = "auto"
 
+# Konfigurasi pencarian paket otomatis oleh setuptools
 [tool.setuptools.packages.find]
+# Mencari folder berawalan 'app' untuk dijadikan paket build
 include = ["app*"]
