@@ -7,37 +7,6 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 
-# Skema IoTSessionCreateRequest memvalidasi input pembuatan sesi dari device IoT
-class IoTSessionCreateRequest(BaseModel):
-    # ID unik device IoT fisik wajib disertakan
-    device_id: str
-
-
-# Skema IoTSessionResponse merespon balik status pembuatan sesi IoT baru
-class IoTSessionResponse(BaseModel):
-    # ID sesi obrolan IoT yang berhasil dibuat
-    session_id: str
-    # ID perangkat IoT terkait
-    device_id: str
-    # Waktu sesi dimulai
-    started_at: datetime
-
-    # Mengizinkan pemetaan otomatis dari atribut objek model ORM database
-    model_config = {"from_attributes": True}
-
-
-# Skema IoTVoiceResponse merespon data transkrip dan suara hasil interaksi IoT
-class IoTVoiceResponse(BaseModel):
-    """Respon setelah memproses permintaan suara: berisi teks pertanyaan, jawaban, dan URL audio."""
-    # ID unik pesan IoT
-    iot_message_id: str
-    # Teks hasil transkripsi rekaman suara user (STT)
-    text_question: str
-    # Teks respon jawaban dari sistem AI (Inference)
-    text_answer: str
-    # URL file audio untuk diputar oleh speaker perangkat IoT (TTS)
-    audio_url: str
-
 
 # Skema IoTMessageOut merepresentasikan data balon obrolan dalam database IoT
 class IoTMessageOut(BaseModel):

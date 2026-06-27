@@ -237,7 +237,7 @@ class ChatService:
         except Exception as exc:
             # Lempar error HTTP 502 Bad Gateway
             raise HTTPException(
-                status_code=status.HTTP_520_WEIRD_GATEWAY_OR_SIMILAR := status.HTTP_502_BAD_GATEWAY,
+                status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Inference service error: {exc}",
             )
 

@@ -43,9 +43,6 @@ from app.schemas.media import (
 )
 # Mengimpor skema validasi pembuatan sesi perangkat IoT, suara respon IoT, dan histori chat IoT
 from app.schemas.iot import (
-    IoTSessionCreateRequest,
-    IoTSessionResponse,
-    IoTVoiceResponse,
     IoTMessageOut,
     IoTSessionDetailResponse,
     IoTSessionSummary,
@@ -89,9 +86,6 @@ __all__ = [
     "MediaListResponse",        # Skema daftar galeri media hasil buatan AI milik user
     
     # Kategori Internet of Things (IoT)
-    "IoTSessionCreateRequest",  # Skema parameter inisiasi sesi baru oleh device IoT
-    "IoTSessionResponse",       # Skema respon balik inisiasi sesi IoT
-    "IoTVoiceResponse",         # Skema respon audio dari interaksi percakapan IoT
     "IoTMessageOut",            # Skema format output pesan percakapan perangkat IoT
     "IoTSessionDetailResponse", # Skema data detail sesi IoT dan transkrip obrolannya
     "IoTSessionSummary",        # Skema ringkasan sesi komunikasi IoT
