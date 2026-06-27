@@ -118,7 +118,9 @@ async def iot_stream(
             logger.info(f"[{device_id}] Responding ({route_taken}): {answer}")
 
             # Synthesize answer back to speech (TTS)
-            audio_response = await AudioManager.synthesize(answer)
+            import re
+            tts_text = re.sub(r'\[.*?\]', '', answer)
+            audio_response = await AudioManager.synthesize(tts_text)
             
             # Save messages in history
             user_msg = IoTMessage(
