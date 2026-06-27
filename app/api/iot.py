@@ -13,7 +13,8 @@ from app.services.audio_manager import AudioManager
 from app.models.iot import IoTMessage, IoTMessageRole
 
 import httpx
-from groq import AsyncGroq
+from google import genai
+from google.genai import types
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -76,19 +77,19 @@ async def iot_stream(
 
             logger.info(f"[{device_id}] Transcribed user input: {transcription}")
 
-            # Fast Route (FAQ local using lightweight Groq LLM)
-            client = AsyncGroq(api_key=settings.groq_api_key)
+            # Fast Route (FAQ local using lightweight Gemini LLM)
+            client = genai.Client(api_key=settings.gemini_api_key)
             prompt = (
                 f"Konteks FAQ: {faq_text}\n\nPertanyaan: {transcription}\n"
                 "Jawab berdasarkan FAQ. Jika konteks tidak cukup, jawab persis: 'Saya tidak tahu'."
             )
             
-            completion = await client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0
+            response = await client.aio.models.generate_content(
+                model=settings.gemini_llm_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.0)
             )
-            answer = completion.choices[0].message.content.strip()
+            answer = response.text.strip()
             
             route_taken = "fast_faq"
             
