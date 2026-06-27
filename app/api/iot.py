@@ -101,9 +101,9 @@ async def iot_stream(
                     if settings.hf_token:
                         headers["Authorization"] = f"Bearer {settings.hf_token}"
                         
-                    async with httpx.AsyncClient(headers=headers) as http_client:
+                    async with httpx.AsyncClient(headers=headers, timeout=60.0) as http_client:
                         res = await http_client.post(
-                            f"{settings.inference_base_url}/api/v1/chat",
+                            f"{settings.inference_base_url.rstrip('/')}/api/chat",
                             json={"query": transcription}
                         )
                         if res.status_code == 200:
