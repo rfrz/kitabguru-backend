@@ -28,6 +28,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.0",
     # Driver database asinkron untuk PostgreSQL
     "asyncpg>=0.29.0",
+    # Driver sinkron PostgreSQL untuk kebutuhan Alembic/SQLAlchemy fallback
+    "psycopg2-binary>=2.9.0",
     # Pustaka pengendali migrasi skema database
     "alembic>=1.13.0",
 

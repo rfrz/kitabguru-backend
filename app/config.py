@@ -48,6 +48,9 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             # Mengganti string postgres:// menjadi skema asyncpg secara tepat 1 kali
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        # Jika URL sudah postgresql:// tapi belum menggunakan asyncpg
+        elif v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
         # asyncpg tidak mendukung parameter sslmode=require di string koneksi, mari kita bersihkan
         if "?sslmode=require" in v:
             # Menghapus parameter ?sslmode=require dari URL
