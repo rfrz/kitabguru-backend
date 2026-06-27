@@ -46,20 +46,21 @@ class Settings(BaseSettings):
     def clean_database_url(cls, v: str) -> str:
         # Jika URL dimulai dengan postgres:// (bawaan heroku/paas), ubah menjadi postgresql+asyncpg://
         if v.startswith("postgres://"):
-            # Mengganti string postgres:// menjadi skema asyncpg secara tepat 1 kali
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)
         # Jika URL sudah postgresql:// tapi belum menggunakan asyncpg
         elif v.startswith("postgresql://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-        # asyncpg tidak mendukung parameter sslmode=require di string koneksi, mari kita bersihkan
-        if "?sslmode=require" in v:
-            # Menghapus parameter ?sslmode=require dari URL
-            v = v.replace("?sslmode=require", "")
-        # Jika sslmode berada di bagian akhir parameter query dengan separator &
-        elif "&sslmode=require" in v:
-            # Menghapus parameter &sslmode=require dari URL
-            v = v.replace("&sslmode=require", "")
-        # Mengembalikan string URL database yang sudah bersih dan kompatibel dengan asyncpg
+            
+        # Parse URL dengan aman untuk menghapus parameter query 'sslmode'
+        from urllib.parse import urlparse, parse_qsl, urlencode
+        parsed = urlparse(v)
+        if parsed.query:
+            # Ambil semua query param, abaikan sslmode
+            qs = [(k, val) for k, val in parse_qsl(parsed.query, keep_blank_values=True) if k != "sslmode"]
+            new_query = urlencode(qs)
+            parsed = parsed._replace(query=new_query)
+            v = parsed.geturl()
+            
         return v
 
     # ── Bagian JWT (Keamanan Token) ───────────────────────────────────────
