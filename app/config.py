@@ -51,12 +51,13 @@ class Settings(BaseSettings):
         elif v.startswith("postgresql://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
             
-        # Parse URL dengan aman untuk menghapus parameter query 'sslmode'
+        # Parse URL dengan aman untuk menghapus parameter query yang tidak didukung asyncpg
         from urllib.parse import urlparse, parse_qsl, urlencode
         parsed = urlparse(v)
         if parsed.query:
-            # Ambil semua query param, abaikan sslmode
-            qs = [(k, val) for k, val in parse_qsl(parsed.query, keep_blank_values=True) if k != "sslmode"]
+            # Ambil semua query param, abaikan sslmode dan channel_binding
+            ignore_params = {"sslmode", "channel_binding"}
+            qs = [(k, val) for k, val in parse_qsl(parsed.query, keep_blank_values=True) if k not in ignore_params]
             new_query = urlencode(qs)
             parsed = parsed._replace(query=new_query)
             v = parsed.geturl()
