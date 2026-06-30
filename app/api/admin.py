@@ -17,7 +17,7 @@ import uuid
 from typing import Optional
 
 # Mengimpor modul FastAPI untuk pembuatan router, penanganan HTTP status, parameter query, dan exception
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Request, UploadFile, File, Form, Body
 # Mengimpor modul SQLAlchemy untuk fungsi agregasi (count), operator OR, dan query builder SELECT
 from sqlalchemy import func, or_, select
 # Mengimpor selectinload untuk memuat relasi data secara efisien (mengurangi query N+1)
@@ -743,3 +743,79 @@ async def _get_iot_session_or_404(session_id: str, db) -> IoTSession:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="IoT session not found")
     # Mengembalikan objek sesi IoT yang ditemukan
     return session
+
+
+# ─── Document Management (Manajemen Dokumen) ───────────────────────────────────
+
+@router.get(
+    "/documents",
+    summary="List all documents from inference engine",
+)
+async def list_documents(
+    admin: AdminUser,
+    request: Request,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Search by title or author"),
+):
+    client = request.app.state.inference_client
+    return await client.get_documents(skip=skip, limit=limit, search=search)
+
+
+@router.post(
+    "/documents/import",
+    summary="Import EPUB document to inference engine",
+)
+async def import_document(
+    admin: AdminUser,
+    request: Request,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    author: Optional[str] = Form(None),
+):
+    client = request.app.state.inference_client
+    content = await file.read()
+    return await client.import_document(file_content=content, filename=file.filename, title=title, author=author)
+
+
+@router.get(
+    "/documents/tasks/{task_id}",
+    summary="Check document import task status",
+)
+async def get_document_task(
+    task_id: str,
+    admin: AdminUser,
+    request: Request,
+):
+    client = request.app.state.inference_client
+    return await client.get_document_task(task_id=task_id)
+
+
+@router.patch(
+    "/documents/{book_id}",
+    summary="Update document metadata",
+)
+async def update_document(
+    book_id: str,
+    admin: AdminUser,
+    request: Request,
+    payload: dict = Body(...),
+):
+    client = request.app.state.inference_client
+    title = payload.get("title")
+    author = payload.get("author")
+    return await client.update_document(book_id=book_id, title=title, author=author)
+
+
+@router.delete(
+    "/documents/{book_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete document",
+)
+async def delete_document(
+    book_id: str,
+    admin: AdminUser,
+    request: Request,
+):
+    client = request.app.state.inference_client
+    await client.delete_document(book_id=book_id)

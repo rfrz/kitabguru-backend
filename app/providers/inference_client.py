@@ -64,6 +64,41 @@ class InferenceClient:
             # Mengembalikan False jika server tidak merespon
             return False
 
+    async def get_documents(self, skip: int = 0, limit: int = 10, search: Optional[str] = None) -> list[dict[str, Any]]:
+        params = {"skip": skip, "limit": limit}
+        if search:
+            params["search"] = search
+        response = await self._client.get("/api/documents", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def delete_document(self, book_id: str) -> None:
+        response = await self._client.delete(f"/api/documents/{book_id}")
+        response.raise_for_status()
+
+    async def update_document(self, book_id: str, title: Optional[str] = None, author: Optional[str] = None) -> dict[str, Any]:
+        payload = {}
+        if title: payload["title"] = title
+        if author: payload["author"] = author
+        response = await self._client.patch(f"/api/documents/{book_id}", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_document_task(self, task_id: str) -> dict[str, Any]:
+        response = await self._client.get(f"/api/documents/tasks/{task_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def import_document(self, file_content: bytes, filename: str, title: Optional[str] = None, author: Optional[str] = None) -> dict[str, Any]:
+        data = {}
+        if title: data["title"] = title
+        if author: data["author"] = author
+        files = {"file": (filename, file_content, "application/epub+zip")}
+        # Timeout panjang khusus untuk upload
+        response = await self._client.post("/api/documents/import", data=data, files=files, timeout=600.0)
+        response.raise_for_status()
+        return response.json()
+
     # Menutup sesi koneksi HTTP client asinkron secara bersih saat shutdown server
     async def aclose(self) -> None:
         """Menutup koneksi client HTTPX asinkron."""
