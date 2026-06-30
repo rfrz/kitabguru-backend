@@ -115,6 +115,9 @@ async def iot_stream(
             if "tidak tahu" in answer.lower():
                 route_taken = "slow_rag"
                 try:
+                    # Notify IoT client that we are taking the slow route
+                    await websocket.send_text("SLOW_MODE_ACTIVATED")
+                    
                     headers = {}
                     if settings.hf_token:
                         headers["Authorization"] = f"Bearer {settings.hf_token}"
