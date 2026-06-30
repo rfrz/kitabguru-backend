@@ -76,12 +76,30 @@ async def iot_stream(
                 continue
 
             logger.info(f"[{device_id}] Transcribed user input: {transcription}")
+            
+            # Fetch recent conversation history from database
+            window = settings.chat_context_window
+            history_result = await db.execute(
+                select(IoTMessage)
+                .where(IoTMessage.iot_session_id == sid)
+                .order_by(IoTMessage.created_at.desc())
+                .limit(window if window > 0 else None)
+            )
+            recent_messages = list(reversed(history_result.scalars().all()))
+            
+            context_lines = [
+                f"{m.role.value.upper()}: {m.content}" for m in recent_messages
+            ]
+            if context_lines:
+                full_query = "\n".join(context_lines) + f"\nUSER: {transcription}"
+            else:
+                full_query = transcription
 
             # Fast Route (FAQ local using lightweight Gemini LLM)
             client = genai.Client(api_key=settings.gemini_api_key)
             prompt = (
-                f"Konteks FAQ: {faq_text}\n\nPertanyaan: {transcription}\n"
-                "Jawab berdasarkan FAQ. Jika konteks tidak cukup, jawab persis: 'Saya tidak tahu'."
+                f"Konteks FAQ: {faq_text}\n\nHistori Percakapan & Pertanyaan:\n{full_query}\n\n"
+                "Jawab berdasarkan FAQ dan histori di atas. Jika konteks tidak cukup, jawab persis: 'Saya tidak tahu'."
             )
             
             response = await client.aio.models.generate_content(
@@ -104,7 +122,7 @@ async def iot_stream(
                     async with httpx.AsyncClient(headers=headers, timeout=60.0) as http_client:
                         res = await http_client.post(
                             f"{settings.inference_base_url.rstrip('/')}/api/chat",
-                            json={"query": transcription}
+                            json={"query": full_query}
                         )
                         if res.status_code == 200:
                             data = res.json()
